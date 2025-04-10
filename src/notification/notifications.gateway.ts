@@ -35,18 +35,46 @@ export class NotificationsGateway
 
   handleDisconnect(client: Socket) {
     console.log(`Client disconnected: ${client.id}`);
+
+    // Remove disconnected socket from the map
+    for (const [userId, socketId] of this.connectedClients.entries()) {
+      if (socketId === client.id) {
+        this.connectedClients.delete(userId);
+        break;
+      }
+    }
+  }
+
+  // Register user with their socket ID
+  @SubscribeMessage('register-user')
+  handleRegisterUser(client: Socket, payload: any) {
+    this.connectedClients.set(payload.userId, client.id);
+    this.logger.log(`User registered: ${payload.userId} with socket: ${client.id}`);
   }
 
   @SubscribeMessage('apply-job')
   async handleApplyJob(client: Socket, payload: any) {
     try {
-      // TODO:
-      // payload
-      // jobId, applicationId, clientId,freelancerId
-
       const userId = payload.userId;
-      const notification = await this.notificationService.notificationCount(userId)
-      this.server.emit('notification', notification);
+      const jobId = payload.jobId
+      const applicationId = payload.applicationId;
+      const clientId = payload.clientId
+      const freelancerId = payload.freelancerId
+
+      const notification = await this.notificationService.notificationCount(userId);
+      const targetSocketId = this.connectedClients.get(userId);
+      if (targetSocketId) {
+        this.server.emit('apply-job', {
+          ...notification,
+          jobId,
+          applicationId,
+          clientId,
+          freelancerId,
+        });
+      } else {
+        this.logger.warn(`No socket found for user: ${userId}`);
+      }
+
     } catch (err) {
       this.logger.error(`Error:${JSON.stringify(err)}`);
       if (err?.response?.statusCode) throw err;
