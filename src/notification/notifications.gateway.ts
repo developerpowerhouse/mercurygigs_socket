@@ -7,7 +7,9 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
+import { NotificationService } from './notification.service';
+import * as jwt from 'jsonwebtoken';
 
 @WebSocketGateway({
   cors: {
@@ -22,24 +24,75 @@ export class NotificationsGateway
   private logger: Logger = new Logger('NotificationsGateway');
   private connectedClients: Map<string, string> = new Map(); // userId -> socketId
 
+  constructor(private readonly notificationService: NotificationService) { }
+
   afterInit() {
     this.logger.log('WebSocket Initialized');
   }
 
   handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+    const token = client.handshake.query?.token as string;
+    if (!token) {
+      this.logger.warn(`Missing token for socket ${client.id}`);
+      client.disconnect();
+      return;
+    }
+
+    try {
+      const decoded: any = jwt.verify(token, process.env.AUTH_SECRET);
+      const userId = decoded.sub || decoded.userId;
+      if (!userId) {
+        throw new UnauthorizedException('Invalid token');
+      }
+
+      this.connectedClients.set(userId, client.id);
+      this.logger.log(`User connected: ${userId} with socket: ${client.id}`);
+    } catch (error) {
+      this.logger.error(`Socket authentication failed: ${error.message}`);
+      client.disconnect();
+    }
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
+    for (const [userId, socketId] of this.connectedClients.entries()) {
+      if (socketId === client.id) {
+        this.connectedClients.delete(userId);
+        this.logger.log(`User disconnected: ${userId}`);
+        break;
+      }
+    }
   }
 
-  @SubscribeMessage('notification')
-  handleMessage(client: Socket, payload: any): void {
-    this.server.emit('message', payload);
-  }
+  @SubscribeMessage('notification-count')
+  async handleApplyJob(client: Socket, payload: any) {
+    try {
+      const userId = payload.userId
+      const jobId = payload.jobId
+      const applicationId = payload.applicationId;
+      const clientId = payload.clientId
+      const freelancerId = payload.freelancerId
 
-  broadcastNotification(payload: any) {
-    this.server.emit('notification', payload);
+      this.connectedClients.set(userId, client.id);
+
+      const notification = await this.notificationService.notificationCount(userId);
+      const targetSocketId = this.connectedClients.get(userId);
+      if (targetSocketId) {
+        this.server.to(targetSocketId).emit('notification-count', {
+          ...notification,
+          jobId,
+          applicationId,
+          clientId,
+          freelancerId,
+        });
+      } else {
+        this.logger.warn(`No socket found for user: ${userId}`);
+      }
+
+    } catch (err) {
+      this.logger.error(`Error:${JSON.stringify(err)}`);
+      if (err?.response?.statusCode) throw err;
+      throw new InternalServerErrorException();
+    }
+
   }
 }

@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config';
 import { DynamooseModule } from 'nestjs-dynamoose';
 import { NotificationsGateway } from './notification/notifications.gateway';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { NotificationsGateway } from './notification/notifications.gateway';
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
       },
     }),
+    NotificationModule
   ],
   controllers: [AppController],
   providers: [AppService, NotificationsGateway],
