@@ -7,8 +7,9 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { InternalServerErrorException, Logger } from '@nestjs/common';
+import { InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
 import { NotificationService } from './notification.service';
+import * as jwt from 'jsonwebtoken';
 
 @WebSocketGateway({
   cors: {
@@ -30,41 +31,53 @@ export class NotificationsGateway
   }
 
   handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+    const token = client.handshake.query?.token as string;
+    if (!token) {
+      this.logger.warn(`Missing token for socket ${client.id}`);
+      client.disconnect();
+      return;
+    }
+
+    try {
+      const decoded: any = jwt.verify(token, process.env.AUTH_SECRET);
+      const userId = decoded.sub || decoded.userId;
+      if (!userId) {
+        throw new UnauthorizedException('Invalid token');
+      }
+
+      this.connectedClients.set(userId, client.id);
+      this.logger.log(`User connected: ${userId} with socket: ${client.id}`);
+    } catch (error) {
+      this.logger.error(`Socket authentication failed: ${error.message}`);
+      client.disconnect();
+    }
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
-
-    // Remove disconnected socket from the map
     for (const [userId, socketId] of this.connectedClients.entries()) {
       if (socketId === client.id) {
         this.connectedClients.delete(userId);
+        this.logger.log(`User disconnected: ${userId}`);
         break;
       }
     }
   }
 
-  // Register user with their socket ID
-  @SubscribeMessage('register-user')
-  handleRegisterUser(client: Socket, payload: any) {
-    this.connectedClients.set(payload.userId, client.id);
-    this.logger.log(`User registered: ${payload.userId} with socket: ${client.id}`);
-  }
-
-  @SubscribeMessage('apply-job')
+  @SubscribeMessage('notification-count')
   async handleApplyJob(client: Socket, payload: any) {
     try {
-      const userId = payload.userId;
+      const userId = payload.userId
       const jobId = payload.jobId
       const applicationId = payload.applicationId;
       const clientId = payload.clientId
       const freelancerId = payload.freelancerId
 
+      this.connectedClients.set(userId, client.id);
+
       const notification = await this.notificationService.notificationCount(userId);
       const targetSocketId = this.connectedClients.get(userId);
       if (targetSocketId) {
-        this.server.emit('apply-job', {
+        this.server.to(targetSocketId).emit('notification-count', {
           ...notification,
           jobId,
           applicationId,
