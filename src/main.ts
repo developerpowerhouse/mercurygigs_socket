@@ -32,13 +32,11 @@ async function startLocalServer() {
     preflightContinue: false,
     credentials: true
   });
-  await app.listen(3003);
-  console.log('Application is running on: http://localhost:3003');
+  await app.listen(process.env.PORT || 3003);
+  console.log(`Application is running on: http://localhost:${process.env.PORT || 3003}`);
 }
 
-if (process.env.NODE_ENV === 'local') {
-  startLocalServer().catch((err) => {
-    console.error('Failed to start local server:', err);
-    process.exit(1);
-  });
-}
+startLocalServer().catch((err) => {
+  console.error('Failed to start local server:', err);
+  process.exit(1);
+});
