@@ -63,27 +63,15 @@ export class NotificationsGateway
     }
   }
 
-  @SubscribeMessage('notification-count')
+  @SubscribeMessage('send-notification')
   async handleApplyJob(client: Socket, payload: any) {
     try {
       const userId = payload.userId
-      const jobId = payload.jobId
-      const applicationId = payload.applicationId;
-      const clientId = payload.clientId
-      const freelancerId = payload.freelancerId
-
-      this.connectedClients.set(userId, client.id);
 
       const notification = await this.notificationService.notificationCount(userId);
       const targetSocketId = this.connectedClients.get(userId);
       if (targetSocketId) {
-        this.server.to(targetSocketId).emit('notification-count', {
-          ...notification,
-          jobId,
-          applicationId,
-          clientId,
-          freelancerId,
-        });
+        this.server.to(targetSocketId).emit('notification-count', notification);
       } else {
         this.logger.warn(`No socket found for user: ${userId}`);
       }
