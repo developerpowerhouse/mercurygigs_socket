@@ -33,6 +33,39 @@ jobs:
           docker build -t $AWS_ECR_REGISTRY/$AWS_ECR_REPOSITORY:$IMAGE_TAG .
           docker push $AWS_ECR_REGISTRY/$AWS_ECR_REPOSITORY:$IMAGE_TAG
 
-      - name: Image pushed successfully
+      - name: Update ECS service with new image
+        env:
+          AWS_ECR_REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
+          AWS_ECR_REPOSITORY: mercury-socket
+          IMAGE_TAG: ${{ github.sha }}
+          AWS_REGION: us-east-2
+          CLUSTER: mercury
+          SERVICE: mercury-socket-service
+          FAMILY: mercury-task-definition
         run: |
-          echo "Docker image pushed: ${{ secrets.AWS_ECR_REGISTRY }}/${{ secrets.AWS_ECR_REPOSITORY }}:${{ github.sha }}"
+          # Fetch current task definition
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $FAMILY --region $AWS_REGION) 
+          
+          # Create new task definition with updated image
+          NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" '
+            .taskDefinition |
+            { 
+              family: .family,
+              containerDefinitions: [.containerDefinitions[] | .image = $IMAGE | .],
+              requiresCompatibilities: .requiresCompatibilities,
+              networkMode: .networkMode,
+              cpu: .cpu,
+              memory: .memory,
+              executionRoleArn: .executionRoleArn,
+              taskRoleArn: .taskRoleArn
+            }'
+          )
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$(echo $NEW_TASK_DEF)" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Update ECS service with new task definition
+          aws ecs update-service --cluster $CLUSTER --service $SERVICE --task-definition $NEW_TASK_DEF_ARN
