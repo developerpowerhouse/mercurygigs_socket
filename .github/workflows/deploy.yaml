@@ -57,7 +57,7 @@ jobs:
               cpu: .cpu,
               memory: .memory,
               executionRoleArn: .executionRoleArn,
-              taskRoleArn: .taskRoleArn
+              volumes: .volumes
             }'
           )
 
@@ -65,7 +65,8 @@ jobs:
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
             --cli-input-json "$(echo $NEW_TASK_DEF)" \
             --query 'taskDefinition.taskDefinitionArn' \
-            --output text)
+            --output text
+            --region $AWS_REGION)
 
           # Update ECS service with new task definition
-          aws ecs update-service --cluster $CLUSTER --service $SERVICE --task-definition $NEW_TASK_DEF_ARN
+          aws ecs update-service --cluster $CLUSTER --service $SERVICE --task-definition $NEW_TASK_DEF_ARN --region $AWS_REGION
