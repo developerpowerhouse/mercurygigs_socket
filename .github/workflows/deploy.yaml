@@ -44,7 +44,7 @@ jobs:
           FAMILY: mercury-task-definition
         run: |
           # Fetch current task definition
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $FAMILY --region $AWS_REGION) 
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $FAMILY) 
           
           # Create new task definition with updated image
           NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" '
@@ -65,8 +65,7 @@ jobs:
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
             --cli-input-json "$(echo $NEW_TASK_DEF)" \
             --query 'taskDefinition.taskDefinitionArn' \
-            --output text
-            --region $AWS_REGION)
+            --output text)
 
           # Update ECS service with new task definition
-          aws ecs update-service --cluster $CLUSTER --service $SERVICE --task-definition $NEW_TASK_DEF_ARN --region $AWS_REGION
+          aws ecs update-service --cluster $CLUSTER --service $SERVICE --task-definition $NEW_TASK_DEF_ARN
