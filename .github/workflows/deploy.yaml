@@ -47,7 +47,7 @@ jobs:
           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $FAMILY) 
           
           # Create new task definition with updated image
-          NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" '
+          NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$AWS_ECR_REGISTRY/$AWS_ECR_REPOSITORY:$IMAGE_TAG" '
             .taskDefinition |
             { 
               family: .family,
